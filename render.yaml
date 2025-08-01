@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: binance-futures-signals
+    runtime: python
+    region: frankfurt
+    buildCommand: ""
+    startCommand: bash start.sh
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
