@@ -1,79 +1,80 @@
-from fastapi import FastAPI
+from flask import Flask, jsonify
 import requests
-import time
+import random
+import os
 
-app = FastAPI()
+app = Flask(__name__)
 
-TELEGRAM_TOKEN = "8384112500:AAG-QDDX-wUl0R9OS2wHsfR9znVD7SYGyVk"
+# 🔐 Заміни токен і chat_id на свої
+BOT_TOKEN = "8384112500:AAG-QDDX-wUl0R9OS2wHsfR9znVD7SYGyVk"
 CHAT_ID = "648661151"
 
-proxies = {
-    "http": "http://6MNtcfzc0O_0:cfMWDolz5RAe@p-28685.sp1.ovh:11001",
-    "https": "http://6MNtcfzc0O_0:cfMWDolz5RAe@p-28685.sp1.ovh:11001"
-}
-
-def get_last_two_prices(symbol="BNBUSDT"):
-    url = f"https://fapi.binance.com/fapi/v1/klines?symbol={symbol}&interval=1m&limit=2"
+# 📈 Отримання поточної ціни з Binance
+def get_current_price(symbol="bnbusdt"):
     try:
-        response = requests.get(url, proxies=proxies, timeout=10)
+        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}"
+        response = requests.get(url)
         data = response.json()
-        price_prev = float(data[0][4])  # Закриття попередньої свічки
-        price_curr = float(data[1][4])  # Закриття поточної свічки
-        return price_prev, price_curr
+        return float(data["price"])
     except Exception as e:
-        print("Помилка отримання цін:", e)
-        return None, None
+        print("Помилка отримання ціни:", e)
+        return None
 
-def send_telegram_signal(symbol, entry, take1, take2, take3, stop, direction):
-    msg = (
-        f"🔥 *Новий сигнал для {symbol} ({direction})*\n\n"
-        f"🎯 Точка входу: `{entry}`\n"
-        f"✅ Тейк профіт 1: `{take1}`\n"
-        f"✅ Тейк профіт 2: `{take2}`\n"
-        f"✅ Тейк профіт 3: `{take3}`\n"
-        f"⛔ Стоп-лосс: `{stop}`"
+# 📤 Надсилання сигналу в Telegram
+def send_telegram_signal(signal):
+    text = (
+        f"📊 Сигнал для {signal['symbol']}\n"
+        f"🔹 Entry: {signal['entry']}\n"
+        f"🎯 TP1: {signal['tp1']}\n"
+        f"🎯 TP2: {signal['tp2']}\n"
+        f"🎯 TP3: {signal['tp3']}\n"
+        f"🛑 SL: {signal['sl']}"
     )
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHAT_ID,
-        "text": msg,
-        "parse_mode": "Markdown"
-    }
-    requests.post(url, data=data)
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": text}
+    requests.post(url, json=payload)
 
-@app.get("/")
-def root():
-    return {"message": "Binance Signal Bot 🔥"}
+# ⚙️ Генерація сигналу на основі ціни
+def generate_signal():
+    current_price = get_current_price("bnbusdt")
+    if not current_price:
+        current_price = random.uniform(200, 300)  # fallback
 
-@app.get("/signal")
-def send_signal(symbol: str = "BNBUSDT"):
-    prev_price, curr_price = get_last_two_prices(symbol)
-    if not prev_price or not curr_price:
-        return {"error": "Не вдалося отримати ціни"}
-
-    # Визначення напрямку
-    direction = "LONG" if curr_price > prev_price else "SHORT"
-
-    if direction == "LONG":
-        take1 = round(curr_price * 1.01, 4)
-        take2 = round(curr_price * 1.02, 4)
-        take3 = round(curr_price * 1.03, 4)
-        stop = round(curr_price * 0.985, 4)
-    else:
-        take1 = round(curr_price * 0.99, 4)
-        take2 = round(curr_price * 0.98, 4)
-        take3 = round(curr_price * 0.97, 4)
-        stop = round(curr_price * 1.015, 4)
-
-    send_telegram_signal(symbol.replace("USDT", "/USDT"), curr_price, take1, take2, take3, stop, direction)
+    entry = round(current_price, 2)
+    tp1 = round(entry * 1.01, 2)
+    tp2 = round(entry * 1.02, 2)
+    tp3 = round(entry * 1.03, 2)
+    sl = round(entry * 0.99, 2)
 
     return {
-        "status": "Сигнал надіслано",
-        "symbol": symbol,
-        "direction": direction,
-        "entry": curr_price,
-        "take1": take1,
-        "take2": take2,
-        "take3": take3,
-        "stop": stop
+        "symbol": "BNB/USDT",
+        "entry": entry,
+        "tp1": tp1,
+        "tp2": tp2,
+        "tp3": tp3,
+        "sl": sl
     }
+
+# 🌐 HTTP endpoint
+@app.route('/signal/send', methods=['GET'])
+def send_signal():
+    signal = generate_signal()
+    send_telegram_signal(signal)
+    return jsonify({
+        "status": "Сигнал надіслано",
+        "symbol": signal["symbol"],
+        "entry": signal["entry"],
+        "tp1": signal["tp1"],
+        "tp2": signal["tp2"],
+        "tp3": signal["tp3"],
+        "sl": signal["sl"]
+    })
+
+# 🔁 Тестовий root маршрут
+@app.route('/')
+def index():
+    return 'Binance Futures Signal Bot запущено ✅'
+
+# 🏁 Запуск
+if __name__ == '__main__':
+    app.run(debug=True)
