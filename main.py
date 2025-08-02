@@ -1,39 +1,49 @@
 from fastapi import FastAPI
 import requests
-from fastapi.middleware.cors import CORSMiddleware
+import random
+import time
 
 app = FastAPI()
 
-# Дозволити CORS (може бути корисно при фронтенді)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+TELEGRAM_TOKEN = "8384112500:AAG-QDDX-wUl0R9OS2wHsfR9znVD7SYGyVk"
+TELEGRAM_CHAT_ID = "648661151"
 
-# Проксі для доступу до Binance
-proxies = {
-    "http": "http://6MNtcfzc0O_0:cfMWDolz5RAe@p-28685.sp1.ovh:11001",
-    "https": "http://6MNtcfzc0O_0:cfMWDolz5RAe@p-28685.sp1.ovh:11001",
-}
+# Тестовий список валют
+symbols = ["BTC/USDT", "ETH/USDT", "BNB/USDT"]
+
+def send_telegram_signal(symbol, entry, tp1, tp2, tp3, sl, position="LONG"):
+    message = f"""🔔 Сигнал на ф'ючерси Binance 🔔
+Пара: {symbol}
+Позиція: {position}
+Точка входу: {entry}
+Take Profit 1: {tp1}
+Take Profit 2: {tp2}
+Take Profit 3: {tp3}
+Stop Loss: {sl}"""
+    
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+    response = requests.post(url, data=payload)
+    return response.json()
+
 
 @app.get("/")
 def root():
-    return {"message": "Binance Futures Proxy API запущено"}
+    return {"message": "Binance Futures Signal Bot запущено"}
 
-@app.get("/symbols")
-def get_symbols():
-    url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
-    try:
-        response = requests.get(url, proxies=proxies, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        symbols = [s["symbol"] for s in data["symbols"] if s.get("contractType") == "PERPETUAL"]
-        return {"symbols": symbols}
-    except Exception as e:
-        return {
-            "error": str(e),
-            "details": "Помилка при отриманні даних з Binance через проксі"
-        }
+
+@app.get("/send-test-signal")
+def send_signal():
+    symbol = random.choice(symbols)
+    entry = round(random.uniform(25000, 30000), 2)
+    tp1 = round(entry * 1.01, 2)
+    tp2 = round(entry * 1.02, 2)
+    tp3 = round(entry * 1.03, 2)
+    sl = round(entry * 0.99, 2)
+    
+    send_telegram_signal(symbol, entry, tp1, tp2, tp3, sl)
+    return {"status": "Сигнал надіслано", "symbol": symbol}
