@@ -1,40 +1,33 @@
 import requests
-import logging
 from flask import Flask, jsonify
+import logging
 
 app = Flask(__name__)
-
-# Налаштування логів
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-BINANCE_PROXY_BASE_URL = "https://api.binanceproxy.io"
-
-def get_symbols():
-    url = f"{BINANCE_PROXY_BASE_URL}/fapi/v1/exchangeInfo"
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        symbols = [s['symbol'] for s in data['symbols'] if s['contractType'] == 'PERPETUAL']
-        if not symbols:
-            logging.warning("Не знайдено символів для торгівлі.")
-        return symbols
-    except requests.RequestException as e:
-        logging.error(f"Помилка при отриманні списку символів: {e}")
-        return []
+# ⚠️ HTTP-проксі (робочий на момент написання)
+PROXY = {
+    "http": "http://51.159.115.233:3128",
+    "https": "http://51.159.115.233:3128",
+}
 
 @app.route("/")
 def index():
-    return "Binance Proxy Signal Service Active!"
+    return "Binance API через проксі працює!"
 
 @app.route("/symbols")
 def symbols():
-    result = get_symbols()
-    return jsonify(result)
+    url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
+    try:
+        response = requests.get(url, proxies=PROXY, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        symbols = [s['symbol'] for s in data['symbols'] if s['contractType'] == 'PERPETUAL']
+        logging.info(f"Знайдено {len(symbols)} символів.")
+        return jsonify(symbols)
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Помилка при запиті: {e}")
+        return jsonify({"error": "Помилка при отриманні даних з Binance"}), 500
 
 if __name__ == "__main__":
-    symbols = get_symbols()
-    if not symbols:
-        logging.warning("Список символів порожній. Завершення програми.")
-        exit(1)
     app.run(host="0.0.0.0", port=10000)
