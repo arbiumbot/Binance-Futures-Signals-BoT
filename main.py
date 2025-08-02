@@ -1,22 +1,39 @@
-from flask import Flask, jsonify
+from fastapi import FastAPI
 import requests
-import os
+from fastapi.middleware.cors import CORSMiddleware
 
-app = Flask(__name__)
+app = FastAPI()
 
-@app.route("/")
-def home():
-    return "Binance API напряму працює"
+# Дозволити CORS (може бути корисно при фронтенді)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.route("/exchange-info")
-def exchange_info():
+# Проксі для доступу до Binance
+proxies = {
+    "http": "http://6MNtcfzc0O_0:cfMWDolz5RAe@p-28685.sp1.ovh:11001",
+    "https": "http://6MNtcfzc0O_0:cfMWDolz5RAe@p-28685.sp1.ovh:11001",
+}
+
+@app.get("/")
+def root():
+    return {"message": "Binance Futures Proxy API запущено"}
+
+@app.get("/symbols")
+def get_symbols():
+    url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
     try:
-        response = requests.get("https://fapi.binance.com/fapi/v1/exchangeInfo", timeout=10)
+        response = requests.get(url, proxies=proxies, timeout=10)
         response.raise_for_status()
-        return jsonify(response.json())
+        data = response.json()
+        symbols = [s["symbol"] for s in data["symbols"] if s.get("contractType") == "PERPETUAL"]
+        return {"symbols": symbols}
     except Exception as e:
-        return jsonify({"error": "Помилка при отриманні даних з Binance", "details": str(e)}), 500
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # ← Render встановлює PORT
-    app.run(host="0.0.0.0", port=port)
+        return {
+            "error": str(e),
+            "details": "Помилка при отриманні даних з Binance через проксі"
+        }
